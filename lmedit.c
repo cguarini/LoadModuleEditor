@@ -65,15 +65,18 @@ int main( int argc, char * argv[]){
     FILE * file = fopen(argv[1] , "r+");
     char * filename = argv[1];
     
-    int readonly = 0;
 
     if(!file){//File not found
       file = fopen(argv[1], "r");
-      readonly = 1;
-      if(!file){//file not read only
-        fprintf(stderr, "FILE NOT FOUND : %s\n", filename);
-        return EXIT_FAILURE;
+      if(!file){//file write only
+        file = fopen(argv[1], "w");
+        if(!file){//file not found
+          fprintf(stderr, "FILE NOT FOUND : %s\n", filename);
+          return EXIT_FAILURE;
+        }
       }
+      fprintf(stderr, "INVALID PERMISSIONS: %s\n", filename);
+      return EXIT_FAILURE;
     }
     //Read the file
     exec_t table; //create table struct
@@ -188,12 +191,6 @@ int main( int argc, char * argv[]){
 
     //Read file into memory
     fread(memory, 1, filesize, file);
-    for(int i = 0; i < filesize; i++){
-      printf("%02x ", memory[i]);
-      if(!(i%16)){
-        printf("\n");
-      }
-    }
     
     
 
@@ -208,8 +205,9 @@ start:
       printf("section[%s] > ",sectionNames[section]);
       
       char input[100];
-      scanf("%[^\n]%*c", input);
-      
+      fgets(input, 99, stdin);
+      strtok(input, "\n");
+
       //Quit the program
       if(!strcmp(input,"quit")){
         if(modified){
@@ -236,7 +234,7 @@ start:
       }
       
       //Get the size of the current section
-      if(!strcmp(input, "size")){
+      else if(!strcmp(input, "size")){
         if(section > 5 && section < 9){
           printf("Section %s is %d entries long\n", sectionNames[section],
               table.data[section]);
@@ -248,7 +246,7 @@ start:
       }
 
       //Change to section
-      if(!strcmp(strtok(input," "), "section")){
+      else if(!strcmp(strtok(input," "), "section")){
         char * changeTo = strtok(NULL, " ");
         //loop through the names of the section searching for user input
         for(int i = 0; i < N_EH+1; i++){
@@ -292,7 +290,8 @@ start:
       
       //Check for write / read commands
       //First part of command is always a digit
-      if(isdigit(input[0])){
+      //Must not be a table
+      else if(isdigit(input[0])){
         
         command c;//Create command struct for parsing
         //Initialize Struct to defaults
@@ -319,6 +318,13 @@ start:
           else if (token[0] == ':'){
             //Find the type
             c.type = token[1];
+
+            //Table sections only
+            if(section > 5 && section < 9){//No types allowed in table sections
+              fprintf(stderr, "error: ':%c' is not valid in table sections",token[1]);
+              error = 1;
+            }
+
             token = token+2;
             //printf("type %c\n",c.type);
 
@@ -326,6 +332,10 @@ start:
           
           else if (token[0] == '='){
             c.newValue = strtol(token+1, &token, 10);
+            if(section > 5 && section < 9){
+              fprintf(stderr, "error : '=%ld' is not valid in table sections",c.newValue);
+              error = 1;
+            }
             //printf("newval %#x\n",c.newValue);
           }
 
@@ -359,6 +369,8 @@ start:
           fprintf(stderr, "error: '%c' is not a valid type\n", c.type);
           error = 1;
         }
+
+        
 
         if(error){
           goto start;
@@ -426,6 +438,7 @@ start:
 
         //WRITE OPERATION
         else{
+          modified = 1;
           //load newvalue into perspective types
           uint8_t val8 = c.newValue;
           uint16_t val16 = c.newValue;
@@ -438,10 +451,18 @@ start:
                 memory[c.address - startingAddresses[section] + offset + (i * 1)] = val8;
                 break;
               case 'h' : 
-                memory[c.address - startingAddresses[section] + offset + (i * 2)] = val16;
+                memory[c.address - startingAddresses[section] + offset + (i * 2)] = (val16 >> 8);
+                val16 = val16 << 8;
+                val16 = val16 >> 8;
+                memory[c.address - startingAddresses[section] + offset + (i * 2) + 1] = val16;
                 break;
               case 'w' :
-                memory[c.address - startingAddresses[section] + offset + (i * 4)] = val32;
+                for( int j = 0; j < 4; j++){
+                  val32 = c.newValue;
+                  val32 = val32 << (j * 8);//shift left bytes out
+                  val32 = val32 >> (24);//shift to right most byte
+                  memory[c.address - startingAddresses[section] + offset + (i * 1) + j] = val32;
+                }
                 break;
             }
           }
@@ -453,10 +474,8 @@ start:
         
 
       }//END OF COMMAND
-
-
-
-    
+      
+          
       //end of commands
     }
 
