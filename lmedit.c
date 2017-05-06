@@ -72,8 +72,8 @@ uint32_t fetchW(uint8_t * memory, int index){
 ///main
 ///Fetches the file and reads the arguments and inputs
 int main( int argc, char * argv[]){
-    if(argc < 1){
-      fprintf(stderr, "usage: lmedit file");
+    if(argc < 2){
+      fprintf(stderr, "usage: lmedit file\n");
       return EXIT_FAILURE;
     }
     //open the file
