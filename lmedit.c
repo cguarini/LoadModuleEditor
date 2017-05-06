@@ -96,7 +96,7 @@ int main( int argc, char * argv[]){
     //Read the file
     exec_t table; //create table struct
     //buffers used by fread
-    uint8_t  ptr8;  //8 bit buffer
+    //uint8_t  ptr8;  //8 bit buffer UNUSED
     uint16_t ptr16; //16 bit buffer
     uint32_t ptr32; //32 bit buffer
 
@@ -105,7 +105,7 @@ int main( int argc, char * argv[]){
     table.magic = readHW(ptr16);
     //Get the version
     read16;
-    table.version = readHW(16);
+    table.version = readHW(ptr16);
 
     //Check if file is MIPS R2K OBJ
     if(table.magic != 0xface){
@@ -230,9 +230,10 @@ int main( int argc, char * argv[]){
     int section = 0;//start at section 0, "TEXT"
     int modified = 0; //boolean, default no modifications
     int offset = headerSize; //Offset of section, default to section 0
+    int pc = 0;
     while(1){
 start:
-      printf("section[%s] > ",sectionNames[section]);
+      printf("%s[%d] >\t",sectionNames[section],pc);
       
       char input[100];
       fgets(input, 99, stdin);
@@ -245,7 +246,8 @@ start:
             printf("Discard modifications (yes or no)? ");
             
             char response[100]; 
-            scanf("%[^\n]%*c", response);
+            fgets(response,100,stdin);
+            strtok(response,"\n");
             
             if(!strcmp(response, "yes")){
               //GOTO TO BREAK NESTED LOOP
@@ -311,6 +313,7 @@ start:
                 offset += (12 * table.data[j]);
               }  
             }
+            printf("Now editing section %s\n",sectionNames[i]);
             //stop searching for name
             break;
           }
@@ -414,19 +417,19 @@ start:
             case 6 : 
               for(int i = 0; i < c.count; i++){
                 relent_t rel;
-                rel.addr = fetchW(memory, (offset + (i * 8)));
-                rel.section = memory[offset + (i * 8) + 4];
-                rel.type = memory[offset + (i * 8) +4];
+                rel.addr = fetchW(memory, (c.address * 8 + offset + (i * 8)));
+                rel.section = memory[c.address * 8 + offset + (i * 8) + 4];
+                rel.type = memory[c.address * 8 + offset + (i * 8) +4];
                 printf("\t%#010x (%s) type %#06x\n", rel.addr, sectionNames[rel.section], rel.type);
               }
               break;
             case 7 :
                for(int i = 0; i < c.count; i++){
                 refent_t ref;
-                ref.addr = fetchW(memory, (offset + (i * 12)));
-                ref.sym  = fetchW(memory, (offset + (i * 12) + 4));
-                ref.section = memory[offset + (i * 12) + 8];
-                ref.type = memory[offset + (i * 12) + 9];
+                ref.addr = fetchW(memory, (c.address * 12 + offset + (i * 12)));
+                ref.sym  = fetchW(memory, (c.address * 12 + offset + (i * 12) + 4));
+                ref.section = memory[c.address * 12 + offset + (i * 12) + 8];
+                ref.type = memory[c.address * 12 + offset + (i * 12) + 9];
                 printf("\t%#010x type %#06x symbol %s\n", ref.addr, ref.type, 
                     ((char * ) memory) + symbolOffset + ref.sym);
                }
@@ -512,7 +515,6 @@ start:
           uint8_t val8 = c.newValue;
           uint16_t val16 = c.newValue;
           uint32_t val32 = c.newValue;
-          printf("%#x, %#x, %#x", val8, val16, val32);
           //Write for count amount of times
           for(int i = 0; i < c.count; i++){
             switch (c.type) { 
@@ -551,10 +553,10 @@ start:
         modified = 0;
       }
       
-          
+      pc++;
       //end of commands
     }
-
+    free(memory);
 endProgram:
     //END OF INSTRUCTIONS
     fclose(file);
