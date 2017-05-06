@@ -11,17 +11,8 @@
 #include <stdlib.h>
 //headers
 #include "exec.h"
+#include "lmedit.h"
 
-//MACROS
-///read16, read32, read8 : Calls fread to read the file for a 16 bit buffer
-#define read16 fread(&ptr16,2,1,file)
-#define read32 fread(&ptr32,4,1,file)
-#define read8  fread(&ptr,1,1,file)
-
-char * strcpy(char * dest, const char * src);
-void * memcpy(void * str1, const void *str2, size_t n);
-int strcmp(const char *str1, const char *str2);
-char * strtok ( char * str, const char * delimiters);
 
 ///readW
 ///Reads the big endian word and returns it in the correct, 
@@ -150,10 +141,10 @@ int main( int argc, char * argv[]){
     for(int i = 0; i < N_EH; i++){
       if(table.data[i]){
         char str[10];
-        if(table.data[i]){
+        if(table.data[i] && i > 6){
           strcpy(str,"entries");
         }
-        else{
+        else if( table.data[i] && i < 6){
           strcpy(str,"bytes");
         }
         printf("Section %s is %d %s long\n", sectionNames[i], table.data[i], str);
@@ -183,6 +174,20 @@ int main( int argc, char * argv[]){
         startingAddresses[i] = 0x00;
       }
     }
+    
+    //Load file into memory
+
+    //find length of file
+    fseek(file, 0L, SEEK_END);
+    long filesize = ftell(file);
+    uint8_t * memory = (uint8_t * ) malloc(filesize+1);
+    
+    //Back to start of file
+    fseek(file, 0L, SEEK_SET);
+    //Read file into memory
+    fread(memory, sizeof(uint8_t), filesize, file);
+    
+
 
     //Command loop
     int headerSize = 52;//52 bytes in header block
@@ -274,6 +279,28 @@ int main( int argc, char * argv[]){
         }
 
       }
+      
+      //Check for write / read commands
+      //First part of command is always a digit
+      if(isdigit(input[0])){
+        command c;
+        char * token;
+        //Grab the location
+        c.location = strtol(input, &token, 10);
+        printf("%ld\n",c.location);
+        while(*token){//Still input to parse
+          
+          //Repeat token
+          if(token[0] == ','){
+            c.repeat = strtol(token+1, &token, 10);
+            printf("%ld\n",c.repeat);
+            break;
+          }
+
+        }
+      }
+
+
 
 
       //end of commands
