@@ -30,8 +30,8 @@ long int strtol(const char *str, char **endptr, int base);
 ///STRUCTS
 ///Command - Used to parse commands from input
 typedef struct command {
-  long  location;//Location to do command
-  long  datasize;//Data size (byte, halfword, word) in bits
-  long  repeat;//how many times to repeat command
-  long  newValue;//New value to set data to
+  uint32_t  address;//Location to do command
+  char  type;//Data size (byte, halfword, word) in bits
+  long  count;//how many times to repeat command
+  uint32_t  newValue;//New value to set data to
 }command;

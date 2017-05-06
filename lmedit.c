@@ -180,12 +180,21 @@ int main( int argc, char * argv[]){
     //find length of file
     fseek(file, 0L, SEEK_END);
     long filesize = ftell(file);
-    uint8_t * memory = (uint8_t * ) malloc(filesize+1);
-    
-    //Back to start of file
+    filesize += (4 - (filesize % 4));//word align
+    uint8_t * memory = (uint8_t * ) malloc(filesize);
+   
+    //Set to begining of file
     fseek(file, 0L, SEEK_SET);
+
     //Read file into memory
-    fread(memory, sizeof(uint8_t), filesize, file);
+    fread(memory, 1, filesize, file);
+    for(int i = 0; i < filesize; i++){
+      printf("%02x ", memory[i]);
+      if(!(i%16)){
+        printf("\n");
+      }
+    }
+    
     
 
 
@@ -195,6 +204,7 @@ int main( int argc, char * argv[]){
     int modified = 0; //boolean, default no modifications
     int offset = headerSize; //Offset of section, default to section 0
     while(1){
+start:
       printf("section[%s] > ",sectionNames[section]);
       
       char input[100];
@@ -283,26 +293,170 @@ int main( int argc, char * argv[]){
       //Check for write / read commands
       //First part of command is always a digit
       if(isdigit(input[0])){
-        command c;
+        
+        command c;//Create command struct for parsing
+        //Initialize Struct to defaults
+        c.address = 0x00;
+        c.count = 0x01;
+        c.type = 'w';
+        c.newValue = 0xFFFFFFFF;
         char * token;
+        int error = 0;
         //Grab the location
-        c.location = strtol(input, &token, 10);
-        printf("%ld\n",c.location);
+        c.address = strtol(input, &token, 10);
+        //printf("address %#x\n",c.address);
         while(*token){//Still input to parse
           
           //Repeat token
           if(token[0] == ','){
-            c.repeat = strtol(token+1, &token, 10);
-            printf("%ld\n",c.repeat);
+            if(isdigit(*(token+1))){
+              c.count = strtol(token+1, &token, 10);
+              //printf("repeat %ld\n",c.count);
+            }
+          }
+          
+          //Type token
+          else if (token[0] == ':'){
+            //Find the type
+            c.type = token[1];
+            token = token+2;
+            //printf("type %c\n",c.type);
+
+          }
+          
+          else if (token[0] == '='){
+            c.newValue = strtol(token+1, &token, 10);
+            //printf("newval %#x\n",c.newValue);
+          }
+
+          //Invalid Command given, stuck in loop 
+          else{
+            fprintf(stderr, "Invalid syntax. A[,N][:T][=V]\n");
+            error = 1;//status bit so that program won't try to execute command
             break;
           }
 
         }
-      }
+
+        //Finished parsing, start executing command
+        //Check for errors
+        
+        //Check valid address
+        if((c.address > table.data[section] + startingAddresses[section]) 
+            || c.address < startingAddresses[section]){
+          fprintf(stderr, "error: '%#x' is not a valid address\n", c.address);
+          error = 1;
+        }
+        
+        //Check if valid count
+        if(c.count > table.data[section]){
+          fprintf(stderr, "error: '%ld' is not a valid count\n", c.count);
+          error = 1;
+        }
+
+        //Check if valid type
+        if(!(c.type == 'b' || c.type == 'h' || c.type == 'w')){
+          fprintf(stderr, "error: '%c' is not a valid type\n", c.type);
+          error = 1;
+        }
+
+        if(error){
+          goto start;
+        }
+
+        //Start execution
+        //Check if read or write
+        if(c.newValue == 0xFFFFFFFF){//Wasn't changed, is a read operation
+          //Set amount of bytes to read
+          int datasize = 0;
+          
+          switch (c.type){
+            case 'b' :
+              datasize = 1;
+              break;
+
+            case 'h' :
+              datasize = 2;
+              break;
+
+            case 'w' :
+              datasize = 4;
+              break;
+          }
+        //Loop through count amount of times
+          for(int i = 0; i < c.count; i++){
+            //Get address
+            uint32_t addr = (c.address + (i * datasize));
+            //Data buffers
+            uint8_t data8=0;
+            uint16_t data16=0;
+            uint32_t data32=0;
+            
+            //switch depending on data type
+            switch (c.type){
+              case 'b' :
+                data8 = memory[c.address - startingAddresses[section] + offset + i];
+                printf("\t%#010x = %#04x\n", addr, data8);
+                break;
+              case 'h' : 
+                //grab halfword
+                data16 = memory[c.address - startingAddresses[section] 
+                  + offset + (i * datasize)];
+                data16 = data16 << 8;
+                data16 += memory[c.address - startingAddresses[section]
+                  + offset + (i * datasize) + (1)];
+                printf("\t%#010x = %#06x\n", addr, data16);
+                break;
+              case 'w' :
+                //grab word
+                for(int j = 0; j < datasize; j++){
+                  data32 += memory[c.address - startingAddresses[section] 
+                    + offset + (i * datasize) + (j)];
+                  if( j < 3){//if not last byte, make room for next byte
+                    data32 = data32 << 8;
+                  }
+                 
+                 }                
+                printf("\t%#010x = %#010x\n", addr, data32);
+                break;
+            }//END SWITCH
+            
+          }//END COUNT LOOP
+        }//END OF READ OPERATION
+
+        //WRITE OPERATION
+        else{
+          //load newvalue into perspective types
+          uint8_t val8 = c.newValue;
+          uint16_t val16 = c.newValue;
+          uint32_t val32 = c.newValue;
+          printf("%#x, %#x, %#x", val8, val16, val32);
+          //Write for count amount of times
+          for(int i = 0; i < c.count; i++){
+            switch (c.type) { 
+              case 'b' :
+                memory[c.address - startingAddresses[section] + offset + (i * 1)] = val8;
+                break;
+              case 'h' : 
+                memory[c.address - startingAddresses[section] + offset + (i * 2)] = val16;
+                break;
+              case 'w' :
+                memory[c.address - startingAddresses[section] + offset + (i * 4)] = val32;
+                break;
+            }
+          }
+  
+
+
+        }
+
+        
+
+      }//END OF COMMAND
 
 
 
-
+    
       //end of commands
     }
 
