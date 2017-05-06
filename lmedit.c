@@ -159,7 +159,7 @@ int main( int argc, char * argv[]){
     for(int i = 0; i < N_EH; i++){
       if(table.data[i]){
         char str[10];
-        if(table.data[i] && i > 6){
+        if(table.data[i] && i > 5){
           strcpy(str,"entries");
         }
         else if( table.data[i] && i < 6){
@@ -556,9 +556,10 @@ start:
       pc++;
       //end of commands
     }
-    free(memory);
+    
 endProgram:
     //END OF INSTRUCTIONS
+    free(memory);
     fclose(file);
     return EXIT_SUCCESS;
 }
