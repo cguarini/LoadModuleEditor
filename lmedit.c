@@ -71,12 +71,18 @@ int main( int argc, char * argv[]){
       return EXIT_FAILURE;
     }
     //open the file
-    FILE * file = fopen(argv[1] , "rw");
+    FILE * file = fopen(argv[1] , "r+");
     char * filename = argv[1];
     
+    int readonly = 0;
+
     if(!file){//File not found
-      fprintf(stderr, "FILE NOT FOUND : %s\n", filename);
-      return EXIT_FAILURE;
+      file = fopen(argv[1], "r");
+      readonly = 1;
+      if(!file){//file not read only
+        fprintf(stderr, "FILE NOT FOUND : %s\n", filename);
+        return EXIT_FAILURE;
+      }
     }
     //Read the file
     exec_t table; //create table struct
@@ -165,7 +171,16 @@ int main( int argc, char * argv[]){
       startingAddresses[EH_IX_STR] = 0x0;
       for(int i = 2; i < EH_IX_REL; i++){
         //fill up rest of addresses except for table sections
-        startingAddresses[i] = startingAddresses[i-1] + table.data[i-1];
+        startingAddresses[i] = startingAddresses[i-1] + table.data[i-1] + 1;
+        //multiple of 8
+        startingAddresses[i] = (8 - (startingAddresses[i] % 8));
+      }
+    }
+
+    else{//Object module
+      for(int i = 0; i < N_EH; i++){
+        //Object module, all addresses are 0
+        startingAddresses[i] = 0x00;
       }
     }
 
