@@ -153,7 +153,22 @@ int main( int argc, char * argv[]){
         printf("Section %s is %d %s long\n", sectionNames[i], table.data[i], str);
         }
       }
-    
+
+
+    //Create array of starting addresses
+    uint32_t startingAddresses[N_EH];
+    //Table is load module
+    if(table.entry){
+      //Set predetermined addresses
+      startingAddresses[0] = 0x00400000;
+      startingAddresses[1] = 0x10000000;
+      startingAddresses[EH_IX_STR] = 0x0;
+      for(int i = 2; i < EH_IX_REL; i++){
+        //fill up rest of addresses except for table sections
+        startingAddresses[i] = startingAddresses[i-1] + table.data[i-1];
+      }
+    }
+
     //Command loop
     int headerSize = 52;//52 bytes in header block
     int section = 0;//start at section 0, "TEXT"
