@@ -546,6 +546,7 @@ start:
       
       //Write changes to the file
       else if(!strcmp(input,"write")){
+        fseek(file, 0L, SEEK_SET);
         fwrite(memory, 1, filesize, file);
         modified = 0;
       }
