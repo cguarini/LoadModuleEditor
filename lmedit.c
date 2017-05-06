@@ -54,6 +54,21 @@ uint16_t readHW(uint16_t hw){
 }
 
 
+///fetchW
+///fetches the word from the array and returns it as a uint32
+///@param : memory - the array
+///         index  - index of first byte in word
+uint32_t fetchW(uint8_t * memory, int index){
+   uint32_t word = 0;
+   for(int i = 0; i < 4; i++){
+      word += memory[index + i];
+      if( i < 3){//Make room for next byte, unless it is the last byte
+        word += word << 8;
+      }
+   }
+   return word;
+}
+
 ///main
 ///Fetches the file and reads the arguments and inputs
 int main( int argc, char * argv[]){
@@ -194,6 +209,21 @@ int main( int argc, char * argv[]){
     
     
 
+    //Find offset to symbol table
+    int symbolOffset = 52;//52 bytes in the header
+    for(int i = 0; i < EH_IX_STR; i++){
+      if( i < 6){//not a table
+        symbolOffset += table.data[i];
+      }
+      else if(i == 6){//relocation table
+        symbolOffset += 8*table.data[i];
+      }
+      else{//other tables
+        symbolOffset += 12*table.data[i];
+      }
+    }
+    
+
 
     //Command loop
     int headerSize = 52;//52 bytes in header block
@@ -321,7 +351,7 @@ start:
 
             //Table sections only
             if(section > 5 && section < 9){//No types allowed in table sections
-              fprintf(stderr, "error: ':%c' is not valid in table sections",token[1]);
+              fprintf(stderr, "error: ':%c' is not valid in table sections\n",token[1]);
               error = 1;
             }
 
@@ -333,7 +363,7 @@ start:
           else if (token[0] == '='){
             c.newValue = strtol(token+1, &token, 10);
             if(section > 5 && section < 9){
-              fprintf(stderr, "error : '=%ld' is not valid in table sections",c.newValue);
+              fprintf(stderr, "error : '=%d' is not valid in table sections\n", (int) c.newValue);
               error = 1;
             }
             //printf("newval %#x\n",c.newValue);
@@ -352,8 +382,8 @@ start:
         //Check for errors
         
         //Check valid address
-        if((c.address > table.data[section] + startingAddresses[section]) 
-            || c.address < startingAddresses[section]){
+        if((section < 5 && c.address > (table.data[section]  + startingAddresses[section])) 
+            || c.address < startingAddresses[section] || (section > 5 && table.data[section]-1 < c.address )){
           fprintf(stderr, "error: '%#x' is not a valid address\n", c.address);
           error = 1;
         }
@@ -371,14 +401,53 @@ start:
         }
 
         
-
+        //Not elegant, but seemed like a good idea at the time.
         if(error){
           goto start;
         }
+        
+        
+        //TABLE SECTIONS
+        if(section > 5 && section <9){
+          //Check which section table 
+          switch (section){
+            case 6 : 
+              for(int i = 0; i < c.count; i++){
+                relent_t rel;
+                rel.addr = fetchW(memory, (offset + (i * 8)));
+                rel.section = memory[offset + (i * 8) + 4];
+                rel.type = memory[offset + (i * 8) +4];
+                printf("\t%#010x (%s) type %#06x\n", rel.addr, sectionNames[rel.section], rel.type);
+              }
+              break;
+            case 7 :
+               for(int i = 0; i < c.count; i++){
+                refent_t ref;
+                ref.addr = fetchW(memory, (offset + (i * 12)));
+                ref.sym  = fetchW(memory, (offset + (i * 12) + 4));
+                ref.section = memory[offset + (i * 12) + 8];
+                ref.type = memory[offset + (i * 12) + 9];
+                printf("\t%#010x type %#06x symbol %s\n", ref.addr, ref.type, 
+                    ((char * ) memory) + symbolOffset + ref.sym);
+               }
+               break;
+             case 8 :
+                for(int i = 0; i < c.count; i++){
+                  syment_t sym;
+                  sym.flags = fetchW(memory, (c.address * 12 + offset + (i * 12)));
+                  sym.value = fetchW(memory, (c.address * 12 + offset + (i * 12) + 4));
+                  sym.sym   = fetchW(memory, (c.address * 12 + offset + (i * 12) + 8));
+                  printf("\tvalue %#010x flags %#010x symbol %s\n", sym.value, sym.flags,
+                      ((char * ) memory) + symbolOffset + sym.sym);
+                }
+                break;
+          }
+        }
+
 
         //Start execution
         //Check if read or write
-        if(c.newValue == 0xFFFFFFFF){//Wasn't changed, is a read operation
+        else if(c.newValue == 0xFFFFFFFF){//Wasn't changed, is a read operation
           //Set amount of bytes to read
           int datasize = 0;
           
@@ -474,6 +543,12 @@ start:
         
 
       }//END OF COMMAND
+      
+      //Write changes to the file
+      else if(!strcmp(input,"write")){
+        fwrite(memory, 1, filesize, file);
+        modified = 0;
+      }
       
           
       //end of commands
